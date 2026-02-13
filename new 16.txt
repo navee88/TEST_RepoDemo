@@ -16,7 +16,7 @@ import Cookies from "js-cookie";
 import AnimatedDropdown from '../Layout/Common/AnimatedDropdown';
 
 import { 
-  useToggle,Hello, 
+  useToggle,Hello,Mega 
   useClickAway 
 } from "@uidotdev/usehooks";
 
