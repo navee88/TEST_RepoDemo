@@ -33,7 +33,7 @@ function LoginForm({ onNavigate }) {
     timeZone: "",
     language: "english",
   };
-
+console.log("Hi");
   const [form, setForm] = useState(initialForm);
   const [sites, setSites] = useState([]);
   const [domains, setDomains] = useState([]);
@@ -669,3 +669,4 @@ function LoginForm({ onNavigate }) {
 }
 
 export default LoginForm;
+
