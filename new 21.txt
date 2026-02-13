@@ -1,0 +1,326 @@
+import React, { useState, useEffect, useCallback } from "react";
+import { RxCross2 } from "react-icons/rx";
+import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
+import { motion, AnimatePresence } from "framer-motion";
+import servicecall from "../../Services/servicecall";
+import Errordialog from "../Layout/Common/Errordialog";
+import { CF_decrypt } from "../Common/encryptiondecryption";
+import Cookies from "js-cookie";
+
+function PasswordPolicy({ onClose }) {
+  const { postData } = servicecall();
+
+  const [cookieData, setCookieData] = useState({
+    sUsername: "",
+    sSiteCode: "",
+  });
+
+  const [formData, setFormData] = useState({
+    oldPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+
+  const [show, setShow] = useState({
+    old: false,
+    new: false,
+    confirm: false,
+  });
+
+  const [dialogData, setDialogData] = useState({
+    open: false,
+    message: "",
+    type: "warning",
+  });
+
+  const [policy, setPolicy] = useState(null);
+
+  const getDecryptedCookie = useCallback((name) => {
+    const cookieValue = Cookies.get(name);
+    return cookieValue ? CF_decrypt(cookieValue) : "";
+  }, []);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const sUsername = getDecryptedCookie("sUsername");
+        const sSiteCode = getDecryptedCookie("sitecode");
+
+        setCookieData({ sUsername, sSiteCode });
+
+        if (sUsername && sSiteCode) {
+          const payload = { sUsername, sSiteCode };
+          const response = await postData("Login/PasswordMessage", payload);
+
+          if (Array.isArray(response) && response.length > 0) {
+            setPolicy(response[0]);
+          }
+        }
+      } catch (err) {
+        console.error("Error loading password policy:", err);
+      }
+    };
+
+    fetchData();
+  }, [postData, getDecryptedCookie]);
+
+  const handleChange = useCallback((e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  }, []);
+
+  const toggleOldPassword = useCallback(() => {
+    setShow((prev) => ({ ...prev, old: !prev.old }));
+  }, []);
+
+  const toggleNewPassword = useCallback(() => {
+    setShow((prev) => ({ ...prev, new: !prev.new }));
+  }, []);
+
+  const toggleConfirmPassword = useCallback(() => {
+    setShow((prev) => ({ ...prev, confirm: !prev.confirm }));
+  }, []);
+
+
+  const showDialog = useCallback((msg, type = "warning") => {
+    setDialogData({ open: true, message: msg, type });
+  }, []);
+
+  const handleDialogClose = useCallback(() => {
+    if (dialogData.type === "success" && onClose) onClose();
+    setDialogData({ open: false, message: "", type: "warning" });
+  }, [dialogData.type, onClose]);
+
+  useEffect(() => {
+    if (!dialogData.open) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === "Enter" && dialogData.open) {
+        e.preventDefault();
+        handleDialogClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [dialogData.open, handleDialogClose]);
+
+  const handleSubmit = useCallback(
+    async (e) => {
+      e.preventDefault();
+
+      const { oldPassword, newPassword, confirmPassword } = formData;
+      const { sUsername, sSiteCode } = cookieData;
+
+      if (!oldPassword || !newPassword || !confirmPassword) {
+        return showDialog("Please fill in all fields.", "warning");
+      }
+
+      if (newPassword !== confirmPassword) {
+        return showDialog(
+          "New password and confirm password do not match.",
+          "warning"
+        );
+      }
+
+      if (policy) {
+        if (newPassword.length < policy.L25MinPasswordLength) {
+          return showDialog(
+            `Password must have at least ${policy.L25MinPasswordLength} characters.`
+          );
+        }
+
+        if (newPassword.length > policy.L25MaxPasswordLength) {
+          return showDialog(
+            `Password cannot exceed ${policy.L25MaxPasswordLength} characters.`
+          );
+        }
+      }
+
+      const payload = {
+        ChangePasswordObj: {
+          sNewPassword: newPassword,
+          sConfirmPassword: confirmPassword,
+          sSiteCode,
+          sUsername,
+          sPassword: oldPassword,
+        },
+        ActiveUserDetails: {
+          sTimeZoneID: "undefined<~>true",
+          sUserStatus: "",
+          sApplicationName: "SDMS",
+        },
+        PasswordExpiry: false,
+      };
+
+      try {
+        const response = await postData("Login/ChangePassword", payload);
+
+        if (response?.oResObj?.bStatus) {
+          showDialog("Password changed successfully!", "success");
+        } else {
+          showDialog(
+            response?.oResObj?.sInformation || "Password change failed.",
+            "warning"
+          );
+        }
+      } catch (err) {
+        showDialog("Something went wrong while changing password.", "error");
+      }
+    },
+    [formData, cookieData, policy, postData, showDialog]
+  );
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50">
+      <div className="bg-white w-[630px] rounded-md shadow-lg overflow-hidden">
+        <div className="flex justify-between items-center px-6 py-4 border-b bg-blue-100">
+          <h2 className="text-[22px] font-semibold text-blue-600">
+            Change Password
+          </h2>
+          <RxCross2
+            className="text-[22px] text-gray-600 cursor-pointer hover:text-red-500 transition-all hover:scale-90"
+            onClick={onClose}
+          />
+        </div>
+        <div className="px-8 py-6">
+          <h3 className="text-red-500 text-[18px] font-semibold mb-5">
+            Policy Changed
+          </h3>
+
+          <form onSubmit={handleSubmit}>
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-gray-600 mb-1">
+                Username
+              </label>
+              <input
+                type="text"
+                value={cookieData.sUsername}
+                readOnly
+                className="w-full text-sm font-semibold text-gray-800 bg-gray-100 border-b border-gray-300 rounded-sm px-1 py-2 focus:outline-none"
+              />
+            </div>
+
+            {/* Old Password */}
+            <div className="mb-5 relative">
+              <label className="block text-sm font-medium text-gray-600 mb-1">
+                Old Password
+              </label>
+              <input
+                type={show.old ? "text" : "password"}
+                name="oldPassword"
+                value={formData.oldPassword}
+                onChange={handleChange}
+                className="w-full text-sm font-semibold focus:outline-none text-gray-800 border-b border-gray-300 pr-8 focus:border-blue-500"
+              />
+              <span
+                className="absolute right-2 top-[30px] cursor-pointer"
+                onClick={toggleOldPassword}
+              >
+                {show.old ? <AiOutlineEyeInvisible /> : <AiOutlineEye />}
+              </span>
+            </div>
+
+            {/* New Password */}
+            <div className="mb-5 relative">
+              <label className="block text-sm font-medium text-gray-600 mb-1">
+                New Password
+              </label>
+              <input
+                type={show.new ? "text" : "password"}
+                name="newPassword"
+                value={formData.newPassword}
+                onChange={handleChange}
+                className="w-full text-sm font-semibold focus:outline-none text-gray-800 border-b border-gray-300 pr-8 focus:border-blue-500"
+              />
+              <span
+                className="absolute right-2 top-[30px] cursor-pointer"
+                onClick={toggleNewPassword}
+              >
+                {show.new ? <AiOutlineEyeInvisible /> : <AiOutlineEye />}
+              </span>
+            </div>
+
+            {/* Confirm Password */}
+            <div className="mb-5 relative">
+              <label className="block text-sm font-medium text-gray-600 mb-1">
+                Confirm Password
+              </label>
+              <input
+                type={show.confirm ? "text" : "password"}
+                name="confirmPassword"
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                className="w-full text-sm font-semibold focus:outline-none text-gray-800 border-b border-gray-300 pr-8 focus:border-blue-500"
+              />
+              <span
+                className="absolute right-2 top-[30px] cursor-pointer"
+                onClick={toggleConfirmPassword}
+              >
+                {show.confirm ? <AiOutlineEyeInvisible /> : <AiOutlineEye />}
+              </span>
+            </div>
+
+            {/* Password Policy */}
+            {policy ? (
+              <div className="font-semibold text-[11px] text-gray-600 mt-3 leading-tight">
+                NOTE: Password must follow the rules:
+                <span className="font-bold text-gray-800 ms-1">
+                  Min: {policy.L25MinPasswordLength}, Max:{" "}
+                  {policy.L25MaxPasswordLength}, Uppercase:{" "}
+                  {policy.L25MinCapitalChar}, Lowercase:{" "}
+                  {policy.L25MinSmallChar}, Numeric:{" "}
+                  {policy.L25MinNumericChar}, Special:{" "}
+                  {policy.L25MinSpecialChar}
+                </span>
+              </div>
+            ) : (
+              <div className="text-[10px] text-gray-500 italic">
+                Loading password policy...
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="flex justify-end gap-3 px-8 py-4 border-t bg-gray-50 mt-6">
+              <button
+                type="submit"
+                className="px-6 py-2 text-sm font-semibold text-white bg-blue-600 rounded hover:bg-blue-700"
+              >
+                Change
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-6 py-2 text-sm font-semibold bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* Dialog */}
+      <AnimatePresence>
+        {dialogData.open && (
+          <motion.div
+            key="error-dialog"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="flex items-center justify-center"
+          >
+            <Errordialog
+              message={dialogData.message}
+              type={dialogData.type}
+              onClose={handleDialogClose}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+export default React.memo(PasswordPolicy);

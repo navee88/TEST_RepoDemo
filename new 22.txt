@@ -1,0 +1,231 @@
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { TbCheckbox } from "react-icons/tb";
+import { BiSend } from "react-icons/bi";
+import ForgotPasswordlayout from "../Layout/Login/ForgotPasswordlayout";
+import servicecall from "../../Services/servicecall";
+import Errordialog from "../Layout/Common/Errordialog";
+import { CF_decrypt } from "../Common/encryptiondecryption";
+import { AiOutlineLoading3Quarters } from "react-icons/ai";
+
+
+const parsedCookies = () => {
+      const cookies = document.cookie.split("; ").reduce((acc, cur) => {
+        const [key, value] = cur.split("=");
+        acc[key] = decodeURIComponent(value);
+        return acc;
+      }, {});
+
+      try {
+        const username = cookies["sUsername"]
+          ? CF_decrypt(cookies["sUsername"])
+          : "";
+        const sitecode = cookies["sitecode"]
+          ? CF_decrypt(cookies["sitecode"])
+          : "";
+        return { sUsername: username, sSiteCode: sitecode };
+      } catch (err) {
+        console.error("Cookie decrypt error:", err);
+        return { sUsername: "", sSiteCode: "" };
+      }
+    };
+
+function Verificationcode({ onClose, userData }) {
+  const { postData } = servicecall();
+  const [code, setCode] = useState("");
+  const [cookieData, setCookieData] = useState({
+    sUsername: "",
+    sSiteCode: "",
+  });
+
+  const [dialogData, setDialogData] = useState({
+    open: false,
+    message: "",
+    type: "",
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  const email = userData?.sUserMailID || "";
+
+  const showDialog = useCallback((message, type = "error") => {
+    setDialogData({ open: true, message, type });
+  }, []);
+
+  const handleDialogClose = useCallback(() => {
+    if (dialogData.type === "verification-success") {
+      onClose();
+    }
+    setDialogData({ open: false, message: "", type: "" });
+  }, [dialogData.type, onClose]);
+
+  useEffect(() => {
+    if (!dialogData.open) return;
+    const handleKeyDown = (e) => {
+      if (e.key === "Enter" && dialogData.open) {
+        e.preventDefault();
+        handleDialogClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [dialogData.open, handleDialogClose]);
+
+  useEffect(() => {
+    setCookieData(parsedCookies());
+  }, []);
+
+  const handleResend = useCallback(
+    async (e) => {
+      e.preventDefault();
+      const { sUsername, sSiteCode } = cookieData;
+      setResending(true);
+
+      try {
+        const response = await postData("Login/sendVerificationCode", {
+          sUserMailID: email,
+          sUsername,
+          sSiteCode,
+        });
+
+        const { bSendStatus, bSendCode } = response || {};
+
+        if (bSendCode === true) {
+          showDialog("Verification code sent successfully!", "success");
+        } else if (bSendCode === false) {
+          showDialog(
+            bSendStatus || "Failed to send verification code.",
+            "warning"
+          );
+        } else {
+          showDialog(
+            bSendStatus || "Unexpected response from server.",
+            "error"
+          );
+        }
+      } catch (error) {
+        showDialog("Error occurred while sending verification code.", "");
+        console.error("Resend error:", error);
+      } finally {
+        setResending(false);
+      }
+    },
+    [cookieData, email, postData, showDialog]
+  );
+
+  const handleSubmit = useCallback(
+    async (e) => {
+      e.preventDefault();
+      const { sUsername, sSiteCode } = cookieData;
+
+      if (!code.trim()) {
+        showDialog("Please enter verification code.", "warning");
+        return;
+      }
+
+      try {
+        const response = await postData("Login/submitVerificationCode", {
+          sUsername,
+          sSiteCode,
+          nVerificationCode: code,
+        });
+
+        const { Message, bValidCode } = response || {};
+
+        if (bValidCode === true) {
+          showDialog(
+            Message || "Password Reset Successfully.",
+            "verification-success"
+          );
+        } else if (bValidCode === false) {
+          showDialog(Message || "Invalid verification code.", "warning");
+        } else {
+          showDialog(Message || "Unexpected response from server.", "");
+        }
+      } catch (error) {
+        showDialog("Error occurred while verifying code.", "error");
+        console.error("Submit error:", error);
+      }
+    },
+    [code, cookieData, postData, showDialog]
+  );
+
+  const handleCodeChange = useCallback((e) => {
+    setCode(e.target.value.trimStart());
+  }, []);
+
+ const resendButtonContent = useMemo(
+    () =>
+      resending ? (
+        <>
+          <AiOutlineLoading3Quarters className="animate-spin mr-2 w-4 h-4" />
+          Resending...
+        </>
+      ) : (
+        <>
+          Resend
+          <BiSend className="ms-2 w-[16px] h-[16px] hover:scale-125" />
+        </>
+      ),
+    [resending]
+  );
+
+  return (
+     <ForgotPasswordlayout>
+      <form onSubmit={handleSubmit} className="p-5 mt-2">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Verification Code <span className="text-red-500">*</span>
+        </label>
+
+        <input
+          type="text"
+          value={code}
+          max={6}
+          maxLength={6}
+          onChange={handleCodeChange}
+          className="w-full bg-gray-100 border-b border-gray-300 rounded-sm px-3 py-2 text-sm focus:outline-none"
+        />
+
+        <div className="flex justify-end space-x-2 mt-5">
+          <button
+            type="button"
+            onClick={handleResend}
+            disabled={resending || loading}
+            className={`flex items-center justify-center bg-blue-500 text-[14px] text-white font-medium px-4 py-2 rounded-md shadow-sm transition-all hover:scale-90 ${
+              resending ? "opacity-70 cursor-not-allowed" : "hover:bg-blue-700"
+            }`}
+          >
+            {resendButtonContent}
+          </button>
+
+          <button
+            type="submit"
+            className="flex items-center bg-blue-500 text-[14px] hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-md shadow-sm transition-all hover:scale-90"
+          >
+            Submit
+            <TbCheckbox className="ms-2 w-[16px] h-[16px] hover:scale-125" />
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 transition-all hover:scale-90"
+          >
+            Close
+          </button>
+        </div>
+      </form>
+
+      {dialogData.open && (
+        <Errordialog
+          message={dialogData.message}
+          type={dialogData.type}
+          onClose={handleDialogClose}
+        />
+      )}
+    </ForgotPasswordlayout>
+  );
+}
+
+export default React.memo(Verificationcode);
