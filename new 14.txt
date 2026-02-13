@@ -15,7 +15,7 @@ import Verificationcode from "./Verificationcode";
 import Cookies from "js-cookie";
 import AnimatedDropdown from '../Layout/Common/AnimatedDropdown';
 
-// Import useHooks
+// Import useHooks class
 import { 
   useToggle, 
   useDebounce, 
