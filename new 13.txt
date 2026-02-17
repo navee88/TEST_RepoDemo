@@ -24,7 +24,7 @@ import { CF_sessionSet } from "../../Common/CF_session";
 //     timeZone: "",
 //   });
 
-// Added comment
+// Added comment by naveen
   
 //   const osNameRef = useRef("");
 //   const { postData } = servicecall();
@@ -210,5 +210,6 @@ function Loginlayout() {
     </>
   );
 }
+
 
 export default React.memo(Loginlayout);
